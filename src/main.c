@@ -197,20 +197,6 @@ static int is_empty_pgh ( const void *pgh ) {
 }
 
 /**
- * Read from file
- *
- * @v file		Virtual file
- * @v data		Data buffer
- * @v offset		Offset
- * @v len		Length
- */
-static void read_file ( struct vdisk_file *file, void *data, size_t offset,
-			size_t len ) {
-
-	memcpy ( data, ( file->opaque + offset ), len );
-}
-
-/**
  * Add embedded bootmgr.exe extracted from bootmgr
  *
  * @v data		File data
@@ -305,8 +291,7 @@ static struct vdisk_file * add_bootmgr ( const void *data, size_t len ) {
 		decompress ( compressed, compressed_len, initrd );
 
 		/* Add decompressed image */
-		return vdisk_add_file ( "bootmgr.exe", initrd,
-					decompressed_len, read_file );
+		return vdisk_add_file ( "bootmgr.exe", initrd, decompressed_len, read_mem_file );
 	}
 
 	DBG ( "...no embedded bootmgr.exe found\n" );
@@ -325,7 +310,7 @@ static int add_file ( const char *name, void *data, size_t len ) {
 	struct vdisk_file *file;
 
 	/* Store file */
-	file = vdisk_add_file ( name, data, len, read_file );
+	file = vdisk_add_file ( name, data, len, read_mem_file );
 
 	/* Check for special-case files */
 	if ( strcasecmp ( name, "bootmgr.exe" ) == 0 ) {
@@ -378,7 +363,7 @@ int main ( void ) {
 	/* Read bootmgr.exe into memory */
 	if ( ! bootmgr )
 		die ( "FATAL: no bootmgr.exe\n" );
-	if ( bootmgr->read == read_file ) {
+	if ( bootmgr->read == read_mem_file ) {
 		raw_pe = bootmgr->opaque;
 	} else {
 		padded_len = ( ( bootmgr->len + PAGE_SIZE - 1 ) &

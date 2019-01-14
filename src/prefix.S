@@ -33,8 +33,12 @@
 #define i386(symbol) symbol
 #endif
 
-/** Standard number of setup sectors */
-#define SETUP_SECTS 4
+/*
+ * Standard number of setup sectors was 5,
+ * but we need to round it to 4k to page
+ * align _payload.
+ */
+#define SETUP_SECTS ((0x1000/SECTOR_SIZE)-1)
 
 /** Sector size */
 #define SECTOR_SIZE 512
@@ -219,7 +223,7 @@ header:
 
 	.org	0x206
 version:
-	.word	0x203	/* Version 2.03 */
+	.word  0x20b	/* Version 2.11 */
 
 	.org	0x20e
 kernel_version:
@@ -228,6 +232,10 @@ kernel_version:
 	.org	0x211
 loadflags:
 	.byte	LOADED_HIGH
+
+	.org	0x214
+code32_start:
+	.long	0
 
 	.org	0x218
 ramdisk_image:
@@ -244,6 +252,37 @@ cmd_line_ptr:
 	.org	0x22c
 ramdisk_max:
 	.long	0x7fffffff
+
+	.org	0x236
+xloadflags:
+	.word	(1<<3)
+
+	.org	0x238
+cmdline_size:
+	.long	256
+
+	.org	0x23c
+hardware_subarch:
+	.long	0
+
+	.org	0x258
+prefaddr:
+	.long	_payload
+	.long	0
+
+	.org	0x260
+init_size:
+	.long	0x10000
+
+	.org	0x264
+handover_offset:
+	/*
+	 * really would like to write efihandover-_payload here,
+	 * but we cant as efihandover its part of the payload
+	 * section.  0x4000 is the page rounded size of this
+	 * prefix setion (4k) + text16/bss16 section (12k).
+	 */
+	.long ( efihandover-BASE_ADDRESS-0x4000 )
 
 version_string:
 	.asciz	VERSION

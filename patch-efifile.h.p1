@@ -1,0 +1,9 @@
+--- src/efifile.h	2019-01-13 22:45:34.847998676 -0500
++++ ../fixed-wimboot/src/efifile.h	2018-12-29 21:21:04.649695621 -0500
+@@ -35,5 +35,6 @@
+ 
+ extern struct vdisk_file *bootmgfw;
+ extern void efi_extract ( EFI_HANDLE handle );
++extern int efi_add_file ( const char *name, void *data, size_t len);
+ 
+ #endif /* _EFIFILE_H */

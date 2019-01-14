@@ -1,0 +1,116 @@
+--- wimbootorig/src/prefix.S	2018-11-02 12:29:14.343297008 +0100
++++ wimboot/src/prefix.S	2018-11-02 12:28:48.071166732 +0100
+@@ -33,8 +33,12 @@
+ #define i386(symbol) symbol
+ #endif
+
+-/** Standard number of setup sectors */
+-#define SETUP_SECTS 4
++/*
++ * Standard number of setup sectors was 5,
++ * but we need to round it to 4k to page
++ * align _payload.
++ */
++#define SETUP_SECTS ((0x1000/SECTOR_SIZE)-1)
+
+ /** Sector size */
+ #define SECTOR_SIZE 512
+@@ -219,7 +223,7 @@
+
+ 	.org  0x206
+ version:
+-	.word  0x203	/* Version 2.03 */
++	.word  0x20b	/* Version 2.11 */
+
+  	.org  0x20e
+ kernel_version:
+@@ -229,6 +233,10 @@
+ loadflags:
+ 	.byte	LOADED_HIGH
+
++	.org	0x214
++code32_start:
++	.long	0
++
+ 	.org	0x218
+ ramdisk_image:
+ 	.long	0	/* Filled in by boot loader */
+@@ -245,6 +253,37 @@
+ ramdisk_max:
+ 	.long	0x7fffffff
+
++	.org	0x236
++xloadflags:
++	.word	(1<<3)
++
++	.org	0x238
++cmdline_size:
++	.long	256
++
++	.org	0x23c
++hardware_subarch:
++	.long	0
++
++	.org	0x258
++prefaddr:
++	.long	_payload
++	.long	0
++
++	.org	0x260
++init_size:
++	.long	0x10000
++
++	.org	0x264
++handover_offset:
++	/*
++	 * really would like to write efihandover-_payload here,
++	 * but we cant as efihandover its part of the payload
++	 * section.  0x4000 is the page rounded size of this
++	 * prefix setion (4k) + text16/bss16 section (12k).
++	 */
++	.long ( efihandover-BASE_ADDRESS-0x4000 )
++
+ version_string:
+ 	.asciz	VERSION
+
+--- wimbootorig/src/startup.S	2018-11-02 12:29:14.343297008 +0100
++++ wimboot/src/startup.S	2018-11-02 12:28:48.071166732 +0100
+@@ -57,6 +57,15 @@
+ 	jmp	reboot
+ 	.size	startup, . - startup
+
++	.section ".text", "ax", @progbits
++	.globl	efihandover
++	.globl	efihandover64
++efihandover:
++        .org    .+512, 0x90
++efihandover64:
++	jmp	efi_linuxentry
++	.size	startup, . - startup
++
+ 	/* Reboot system */
+ 	.section ".text", "ax", @progbits
+ 	.globl	reboot
+--- wimbootorig/src/efimain.c	2018-11-02 12:29:14.343297008 +0100
++++ wimboot/src/efimain.c	2018-11-02 13:41:05.044672622 +0100
+@@ -99,3 +99,19 @@
+
+ 	return 0;
+ }
++
++void
++efi_linuxentry(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *systab, uint32_t *bp)
++{
++	efi_image_handle = image_handle;
++	efi_systab = systab;
++
++#if __x86_64__
++	extern char _bss[];
++	extern char _ebss[];
++	memset(_bss, 0, _ebss-_bss);
++#endif
++
++	efi_main(image_handle, systab);
++}
++
+

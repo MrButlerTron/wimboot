@@ -610,11 +610,15 @@ struct vdisk_file {
 
 extern struct vdisk_file vdisk_files[VDISK_MAX_FILES];
 
+
 extern void vdisk_read ( uint64_t lba, unsigned int count, void *data );
 extern struct vdisk_file *
 vdisk_add_file ( const char *name, void *opaque, size_t len,
 		 void ( * read ) ( struct vdisk_file *file, void *data,
 				   size_t offset, size_t len ) );
+
+extern void read_mem_file ( struct vdisk_file *file, void *data, size_t offset, size_t len );
+
 extern void
 vdisk_patch_file ( struct vdisk_file *file,
 		   void ( * patch ) ( struct vdisk_file *file, void *data,

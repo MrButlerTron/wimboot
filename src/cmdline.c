@@ -105,7 +105,7 @@ void process_cmdline ( char *cmdline ) {
 			cmdline_index = strtoul ( value, &endp, 0 );
 			if ( *endp )
 				die ( "Invalid index \"%s\"\n", value );
-		} else if ( strcmp ( key, "initrdfile" ) == 0 ) {
+		} else if ( strcmp ( key, "initrdfile" ) == 0 || strcmp ( key, "initrd" ) == 0) {
 			/* Ignore this keyword to allow for use with syslinux */
 		} else if ( key == cmdline ) {
 			/* Ignore unknown initial arguments, which may

@@ -1,0 +1,150 @@
+---
+--- wimboot/src/efimain.c.1	2018-11-02 13:43:01.737251269 +0100
++++ wimboot/src/efimain.c	2018-11-02 13:43:10.549294966 +0100
+@@ -32,6 +32,15 @@
+ #include "efiblock.h"
+ #include "efiboot.h"
+
++#include "string.h"
++#include "cpio.h"
++
++/** initrd */
++void *initrd;
++
++/** Length of initrd */
++size_t initrd_len;
++
+ /**
+  * Process command line
+  *
+@@ -88,8 +97,13 @@
+ 	/* Process command line */
+ 	efi_cmdline ( loaded.image );
+
+-	/* Extract files from file system */
+-	efi_extract ( loaded.image->DeviceHandle );
++	if(initrd_len){
++		/* Extract files from initrd (syslinux) */
++		cpio_extract ( initrd, initrd_len, efi_add_file );
++	} else {
++		/* Extract files from file system */
++		efi_extract ( loaded.image->DeviceHandle );
++	}
+
+ 	/* Install virtual disk */
+ 	efi_install ( &vdisk, &vpartition );
+@@ -112,6 +126,11 @@
+ 	memset(_bss, 0, _ebss-_bss);
+ #endif
+
++	if(bp){
++		initrd = (void*)(intptr_t)bp[0x218/4];
++		initrd_len = (size_t)bp[0x21c/4];
++	}
++
+ 	efi_main(image_handle, systab);
+ }
+
+--- wimbootorig/src/efifile.c	2018-11-02 12:29:14.343297008 +0100
++++ wimboot/src/efifile.c	2018-11-02 15:15:03.640632910 +0100
+@@ -117,6 +117,61 @@
+ 	}
+ }
+
++static int
++isbootmgfw( const char *name)
++{
++	char bootarch[32];
++
++	if (strcasecmp(name, "bootmgfw.efi") == 0)
++		return 1;
++	snprintf ( bootarch, sizeof ( bootarch ), "%ls", efi_bootarch() );
++	return strcasecmp(name, bootarch) == 0;
++}
++
++static int
++addfile( const char *name, void *data, size_t len,  void ( * read ) ( struct vdisk_file *file,
++                                                       void *data,
++                                                       size_t offset,
++                                                       size_t len ) ) {
++	struct vdisk_file *vfile;
++
++	vfile = vdisk_add_file ( name, data, len, read );
++
++        /* Check for special-case files */
++	if ( isbootmgfw( name ) ) {
++		DBG ( "...found bootmgfw.efi file %s\n", name );
++		bootmgfw = vfile;
++	} else if ( strcasecmp ( name, "BCD" ) == 0 ) {
++		DBG ( "...found BCD\n" );
++		vdisk_patch_file ( vfile, efi_patch_bcd );
++	} else if ( strlen( name ) > 4 && strcasecmp ( ( name + ( strlen ( name ) - 4 ) ), ".wim" ) == 0 ) {
++		DBG ( "...found WIM file %s\n", name );
++		vdisk_patch_file ( vfile, patch_wim );
++		if ( ( ! bootmgfw ) &&
++		     ( bootmgfw = wim_add_file ( vfile, cmdline_index,
++                                                         bootmgfw_path,
++                                                         efi_bootarch() ) ) ) {
++			DBG ( "...extracted %ls\n", bootmgfw_path );
++		}
++	}
++	return 0;
++}
++
++/**
++ * File handler
++ *
++ * @v name              File name
++ * @v data              File data
++ * @v len               Length
++ * @ret rc              Return status code
++ */
++int
++efi_add_file ( const char *name, void *data, size_t len)
++{
++	return addfile(name, data, len, read_mem_file);
++}
++
++
+ /**
+  * Extract files from EFI file system
+  *
+@@ -133,7 +188,6 @@
+ 		CHAR16 name[ VDISK_NAME_LEN + 1 /* WNUL */ ];
+ 	} __attribute__ (( packed )) info;
+ 	char name[ VDISK_NAME_LEN + 1 /* NUL */ ];
+-	struct vdisk_file *vfile;
+ 	EFI_FILE_PROTOCOL *root;
+ 	EFI_FILE_PROTOCOL *file;
+ 	UINTN size;
+@@ -186,28 +240,7 @@
+
+ 		/* Add file */
+ 		snprintf ( name, sizeof ( name ), "%ls", wname );
+-		vfile = vdisk_add_file ( name, file, info.file.FileSize,
+-					 efi_read_file );
+-
+-		/* Check for special-case files */
+-		if ( ( wcscasecmp ( wname, efi_bootarch() ) == 0 ) ||
+-		     ( wcscasecmp ( wname, L"bootmgfw.efi" ) == 0 ) ) {
+-			DBG ( "...found bootmgfw.efi file %ls\n", wname );
+-			bootmgfw = vfile;
+-		} else if ( wcscasecmp ( wname, L"BCD" ) == 0 ) {
+-			DBG ( "...found BCD\n" );
+-			vdisk_patch_file ( vfile, efi_patch_bcd );
+-		} else if ( wcscasecmp ( ( wname + ( wcslen ( wname ) - 4 ) ),
+-					 L".wim" ) == 0 ) {
+-			DBG ( "...found WIM file %ls\n", wname );
+-			vdisk_patch_file ( vfile, patch_wim );
+-			if ( ( ! bootmgfw ) &&
+-			     ( bootmgfw = wim_add_file ( vfile, cmdline_index,
+-							 bootmgfw_path,
+-							 efi_bootarch() ) ) ) {
+-				DBG ( "...extracted %ls\n", bootmgfw_path );
+-			}
+-		}
++		addfile(name, file, info.file.FileSize, efi_read_file);
+ 	}
+
+ 	/* Check that we have a boot file */
+

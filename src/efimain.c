@@ -32,6 +32,15 @@
 #include "efiblock.h"
 #include "efiboot.h"
 
+#include "string.h"
+#include "cpio.h"
+
+/** initrd */
+void *initrd;
+
+/** Length of initrd */
+size_t initrd_len;
+
 /**
  * Process command line
  *
@@ -88,8 +97,13 @@ EFI_STATUS EFIAPI efi_main ( EFI_HANDLE image_handle,
 	/* Process command line */
 	efi_cmdline ( loaded.image );
 
-	/* Extract files from file system */
-	efi_extract ( loaded.image->DeviceHandle );
+	if(initrd_len){
+		/* Extract files from initrd (syslinux) */
+		cpio_extract ( initrd, initrd_len, efi_add_file );
+	} else {
+		/* Extract files from file system */
+		efi_extract ( loaded.image->DeviceHandle );
+	}
 
 	/* Install virtual disk */
 	efi_install ( &vdisk, &vpartition );
@@ -99,3 +113,24 @@ EFI_STATUS EFIAPI efi_main ( EFI_HANDLE image_handle,
 
 	return 0;
 }
+
+void
+efi_linuxentry(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE *systab, uint32_t *bp)
+{
+	efi_image_handle = image_handle;
+	efi_systab = systab;
+
+#if __x86_64__
+	extern char _bss[];
+	extern char _ebss[];
+	memset(_bss, 0, _ebss-_bss);
+#endif
+
+	if(bp){
+		initrd = (void*)(intptr_t)bp[0x218/4];
+		initrd_len = (size_t)bp[0x21c/4];
+	}
+
+	efi_main(image_handle, systab);
+}
+
